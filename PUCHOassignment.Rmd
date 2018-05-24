@@ -1,0 +1,496 @@
+#1.Introduction
+Notebook analysing Kaggle songdata and getting insights of the data using NLP techniques.
+Data can be downloaded here 
+*[Kaggle](https://www.kaggle.com/mousehead/songlyrics/downloads/songdata.csv/1)
+
+
+#2. Loading dataset,packages and other required functions
+```{r message=FALSE,warning=FALSE}
+
+
+library(ggplot2) 
+library(readr)
+library(data.table)
+library(tidytext)
+library(tidyverse)
+library(magrittr)
+library(DT)
+library(stringr)
+library(wordcloud)
+library(wordcloud2)
+library(igraph)
+library(ggraph)
+library(tm)
+library(SnowballC)
+library(dplyr)
+library(tidytext) 
+library(tidyr) 
+library(widyr)
+library(quanteda)
+library(ggplot2) 
+library(ggrepel) 
+library(gridExtra) 
+library(knitr) 
+library(kableExtra) 
+library(formattable) 
+library(yarrr)  
+library(radarchart) 
+library(igraph) 
+library(ggraph)
+library(reshape2)
+
+songdata<-fread("E:/kaggle/Assignment/songdata.csv",stringsAsFactors = F)
+
+my_colors <- c("#E69F00", "#56B4E9", "#009E73", "#CC79A7", "#D55E00", "#D65E00")
+
+theme_lyrics <- function(aticks = element_blank(),
+                         pgminor = element_blank(),
+                         lt = element_blank(),
+                         lp = "none")
+{
+  theme(plot.title = element_text(hjust = 0.5), 
+        axis.ticks = aticks, 
+        panel.grid.minor = pgminor, 
+        legend.title = lt,
+        legend.position = lp)
+}
+
+my_kable_styling <- function(dat, caption) {
+  kable(dat, "html", escape = FALSE, caption = caption) %>%
+    kable_styling(bootstrap_options = c("striped", "condensed", "bordered"),
+                  full_width = FALSE)
+}
+```
+
+#3.Analysis
+```{r}
+length(unique(songdata$artist))
+```
+There are 643 different artists.
+
+First analysis of text is done without removing undesirable words then we will see the difference with including undesirable words.
+
+## Distribution of wordlength
+```{r}
+
+songdata$len = str_count(songdata$text)
+songdata %>%
+  ggplot(aes(x = len)) +    
+  geom_histogram(fill= "black",bins = 50) +
+  labs(x= 'Word Length',y = 'Count', title = paste("Distribution of", ' Word Length ')) +
+  theme_bw()
+```
+
+## Top 30 most common words 
+```{r}
+songdata%>%
+  unnest_tokens(word, text) %>%
+  filter(!word %in% stop_words$word) %>%
+  count(word,sort = TRUE) %>%
+  ungroup() %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>%
+  head(30) %>%
+  
+  ggplot(aes(x = word,y = n)) +
+  geom_bar(stat='identity',colour="white", fill ="black") +
+  geom_text(aes(x = word, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'white',
+            fontface = 'bold') +
+  labs(x = 'Word', y = 'Word Count', 
+       title = "Top 30 most common words") +
+  coord_flip() + 
+  theme_bw()
+
+
+```
+
+This shows that most of the songs are related to love. Romantic songs are the most popular among the artists.
+
+##Analysis of bigrams,trigram
+```{r}
+dcorpus <- corpus(songdata$text)
+dfm1 <- dfm(
+  dcorpus, 
+  ngrams = 1, 
+  remove = c("rm", stopwords("english"),"undesirable_words"),
+  remove_punct = TRUE,
+  remove_numbers = TRUE,
+  stem = TRUE)
+
+topfeat <- topfeatures(dfm1, n = 25)
+
+```
+
+
+```{r}
+textplot_wordcloud(dfm1, min.freq = 3e4, random.order = FALSE,
+                   rot.per = .25, 
+                   colors = RColorBrewer::brewer.pal(8,"Dark2"))
+```
+
+###bigrams
+```{r}
+dfm2 <- dcorpus %>%
+  corpus_sample(size = floor(ndoc(dcorpus) * 0.30)) %>%
+  dfm(
+    ngrams = 2,
+    remove = c("rm", stopwords("english")),
+    remove_punct = TRUE,
+    remove_numbers = TRUE,
+    concatenator = " "
+  )
+
+topfeat2 <- topfeatures(dfm2, n = 25)
+
+# convert to df and plot
+data.frame(term = names(topfeat2), freq = unname(topfeat2)) %>%
+  ggplot(aes(x = reorder(term, freq), y = freq/1000)) + 
+  geom_bar(stat = 'identity', fill = 'orangered2') + 
+  labs(x = '', y = 'Frequency (000s)', title = '25 most common description bigrams') + 
+  coord_flip() 
+set.seed(100)
+textplot_wordcloud(dfm2, min.freq = 3500, random.order = FALSE,
+                   rot.per = .25, 
+                   colors = RColorBrewer::brewer.pal(8,"Dark2"))
+```
+
+
+###Trigrams
+```{r warning=FALSE}
+
+dfm3 <- dcorpus %>%
+  corpus_sample(size = floor(ndoc(dcorpus) * 0.50)) %>%
+  dfm(
+    ngrams = 3,
+    ignoredFeatures = c("rm", stopwords("english")),
+    remove_punct = TRUE,
+    remove_numbers = TRUE,
+    concatenator = " "
+  )
+tf <- topfeatures(dfm3, n = 25)
+
+# convert to df and plot
+data.frame(term = names(tf), freq = unname(tf)) %>%
+  ggplot(aes(x = reorder(term, freq), y = freq/1000)) + 
+  geom_bar(stat = 'identity', fill = 'orangered2') + 
+  labs(x = '', y = 'Frequency (000s)', title = '25 most common description 3-grams') + 
+  coord_flip() 
+set.seed(100)
+textplot_wordcloud(dfm3, min.freq = 100, random.order = FALSE,
+                   rot.per = .25, 
+                   colors = RColorBrewer::brewer.pal(8,"Dark2"))
+```
+
+This shows that trigrams which are popular are mostly phonetic words used by artists for rhyming the words.
+
+
+#TFIDF
+```{r}
+top_terms_by_topic_tfidf <- function(text_df, text_column, group_column, plot = T){
+  
+  group_column <- enquo(group_column)
+  text_column <- enquo(text_column)
+  
+  
+  words <- text_df %>%
+    unnest_tokens(word, !!text_column) %>%
+    count(!!group_column, word) %>% 
+    ungroup()
+  
+  
+  total_words <- words %>% 
+    group_by(!!group_column) %>% 
+    summarize(total = sum(n))
+  
+
+  words <- left_join(words, total_words)
+  
+  
+  tf_idf <- words %>%
+    bind_tf_idf(word, !!group_column, n) %>%
+    select(-total) %>%
+    arrange(desc(tf_idf)) %>%
+    mutate(word = factor(word, levels = rev(unique(word))))
+  
+  if(plot == T){
+  
+    group_name <- quo_name(group_column)
+    
+    
+    tf_idf %>% 
+      group_by(!!group_column) %>% 
+      top_n(10) %>% 
+      ungroup %>%
+      ggplot(aes(word, tf_idf, fill = as.factor(group_name))) +
+      geom_col(show.legend = FALSE) +
+      labs(x = NULL, y = "tf-idf") +
+      facet_wrap(reformulate(group_name), scales = "free") +
+      coord_flip()
+  }else{
+   
+    return(tf_idf)
+  }
+}
+top_terms_by_topic_tfidf(songdata[1:8,],text,song,plot = T)
+
+```
+TF is "term frequency". IDF is "inverse document frequency", which attaches a lower weight for commonly used words and a higher weight for words that are not used much in a collection of text. TF-IDF certainly gives us a different perspective on potentially important words. Here,analysis of TFIDF is done on some of the song since analysis of all the songs cannot be done together.In the first plot the words she and she's have higher values.It is also obsereved that most of the songs in the above songs have their song name as the word with higher value. 
+
+#4. Sentiment Analysis
+```{r}
+undesirable_words <- c("prince", "chorus", "repeat", "lyrics",
+                       "theres", "bridge", "fe0f", "yeah", "baby",
+                       "alright", "wanna", "gonna", "chorus", "verse",
+                       "whoa", "gotta", "make", "miscellaneous", "2",
+                       "4", "ooh", "uurh", "pheromone", "poompoom", "3121",
+                       "matic", " ai ", " ca ", " la ", "hey", " na ",
+                       " da ", " uh ", " tin ", "  ll", "transcription",
+                       "repeats", "la", "da", "uh", "ah","rum","pa")
+
+
+songdata_tidy <- songdata %>%
+  unnest_tokens(word, text) %>% 
+  filter(!word %in% undesirable_words) %>% 
+  filter(!nchar(word) < 3) %>% 
+  anti_join(stop_words) 
+
+songdata_words_filtered <- songdata %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>%
+  distinct() %>%
+  filter(!word %in% undesirable_words) %>%
+  filter(nchar(word) > 3)
+
+songdata_words_counts <- songdata_words_filtered %>%
+  count(word, sort = TRUE) 
+
+wordcloud2(songdata_words_counts[1:300, ], size = .5)
+```
+
+Sentiment analysis is a type of text mining which aims to determine the opinion and subjectivity of its content.Lexicon-based approach is used here.Lexicon(lexical dictionaries) are used to match the words which show sentiments. Four dictionaries Loughran,afinn,bing and nrc are used.Analysis is done after removing undesirable words.
+
+```{r}
+new_sentiments <- sentiments %>% 
+  filter(lexicon != "loughran") %>% 
+  mutate( sentiment = ifelse(lexicon == "AFINN" & score >= 0, "positive",
+                             ifelse(lexicon == "AFINN" & score < 0,
+                                    "negative", sentiment))) %>%
+  group_by(lexicon) %>%
+  mutate(words_in_lexicon = n_distinct(word)) %>%
+  ungroup()
+
+new_sentiments %>%
+  group_by(lexicon, sentiment, words_in_lexicon) %>%
+  summarise(distinct_words = n_distinct(word)) %>%
+  ungroup() %>%
+  spread(sentiment, distinct_words) %>%
+  mutate(lexicon = color_tile("lightblue", "lightblue")(lexicon),
+         words_in_lexicon = color_bar("lightpink")(words_in_lexicon)) %>%
+  my_kable_styling(caption = "Word Counts Per Lexicon")
+```
+This shows how each lexicon have different amount of words which show different sentiments. Nrc have more number of distinct words and show more emotions whereas AFINN and bing show positive and negative sentiments only.Many words are considered neutral and would not have an associated sentiment.
+
+##Create sentiment Datasets
+```{r}
+songdata_bing <- songdata_tidy %>%
+  inner_join(get_sentiments("bing"))
+songdata_nrc <- songdata_tidy %>%
+  inner_join(get_sentiments("nrc"))
+songdata_nrc_sub <- songdata_tidy %>%
+  inner_join(get_sentiments("nrc")) %>%
+  filter(!sentiment %in% c("positive", "negative"))
+```
+We here create sentiment datasets using lexicons. Since words can appear in multiple categories in NRC, such as Negative/Fear or Positive/Joy,a subset is created without the positive and negative categories to use later on.
+
+###Nrc plot
+```{r}
+nrc_plot <- songdata_nrc %>%
+  group_by(sentiment) %>%
+  summarise(word_count = n()) %>%
+  ungroup() %>%
+  mutate(sentiment = reorder(sentiment, word_count)) %>%
+  
+  ggplot(aes(sentiment, word_count, fill = -word_count)) +
+  geom_col() +
+  guides(fill = FALSE) +
+  theme_lyrics() +
+  labs(x = NULL, y = "Word Count") +
+  scale_y_continuous() + 
+  ggtitle("songdata NRC Sentiment") +
+  coord_flip()
+nrc_plot
+```
+In this nrc plot positive sentiment words are more than negative ones.However other sentiments should not be left unseen.
+
+###Bing plot
+```{r}
+bing_plot <- songdata_bing %>%
+  group_by(sentiment) %>%
+  summarise(word_count = n()) %>%
+  ungroup() %>%
+  mutate(sentiment = reorder(sentiment, word_count)) %>%
+  ggplot(aes(sentiment, word_count, fill = sentiment)) +
+  geom_col() +
+  guides(fill = FALSE) +
+  theme_lyrics() +
+  labs(x = NULL, y = "Word Count") +
+  scale_y_continuous() +
+  ggtitle("songdata Bing Sentiment") +
+  coord_flip()
+bing_plot
+tokens <- songdata %>%  
+  mutate(tok=as.character(songdata$text)) %>%
+  unnest_tokens(word, tok)
+tokens %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort=TRUE) %>%
+  acast(word ~ sentiment, value.var="n", fill=0) %>%
+  comparison.cloud(colors=c("#F8766D", "#00BFC4"), max.words=100)
+```
+
+Bing shows negative sentiment words dominate over positive.We get that there is difference in result of the sentiments in nrc and bing lexicons.This will be clear  when we do futher analysis with bigrams and negation words. 
+
+
+##Frequency of each sentiment
+```{r warning=FALSE}
+sentiments <- tokens %>% 
+  inner_join(get_sentiments("nrc")) %>%
+  count(word, sentiment, sort=TRUE) 
+
+
+sentiments %>%
+  group_by(sentiment) %>%
+  arrange(desc(n)) %>%
+  slice(1:10) %>%
+  ggplot(aes(x=reorder(word, n), y=n)) +
+  geom_col(aes(fill=sentiment), show.legend=FALSE) +
+  facet_wrap(~sentiment, scales="free_y") +
+  labs(y="Frequency", x="Terms") +
+  coord_flip() 
+```
+
+
+
+##Sentiment Bigrams
+```{r}
+bigrams <- songdata %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2)
+
+bigrams_separated <- bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>%
+  filter(!word1 %in% undesirable_words) %>%
+  filter(!word2 %in% undesirable_words)
+bigram_2<- bigrams_filtered %>%
+  filter(word1 != word2) %>%
+  unite(bigram, word1, word2, sep = " ") %>%
+  inner_join(songdata) %>%
+  ungroup()
+
+bigram_counts <- bigram_2 %>% 
+  count(bigram, sort = TRUE)
+head(bigram_counts) 
+
+
+bigram_counts %>% arrange(desc(n))%>% 
+  head(6)%>%
+  ggplot(aes(x=factor(bigram,levels=bigram),y=n))+geom_bar(stat="identity",fill="#FF3E45")
+
+```
+Bigrams plot show the words are related to love , relationship,christmas.
+
+##Negation words
+```{r}
+AFINN <- get_sentiments("afinn")
+
+not_words <- bigrams_separated %>%
+  filter(word1 == "not") %>%
+  inner_join(AFINN, by = c(word2 = "word")) %>%
+  count(word2, score, sort = TRUE) %>%
+  ungroup()
+
+not_words %>%
+  mutate(contribution = n * score) %>%
+  arrange(desc(abs(contribution))) %>%
+  head(20) %>%
+  mutate(word2 = reorder(word2, contribution)) %>%
+  ggplot(aes(word2, n * score, fill = n * score > 0)) +
+  geom_col(show.legend = FALSE) +
+  theme_lyrics() +
+  xlab("Words preceded by \"not\"") +
+  ylab("Sentiment score * Number of Occurrences") +
+  ggtitle("Polar Sentiment of Words Preceded by Not") +
+  coord_flip()
+```
+
+AFINN lexicon is used here to perform sentiment analysis on word pairs, looking at how often sentiment-associated words are preceded by "not" or other negating words.Since negation words reverses the effect of words in lyrics.We see polar sentiments of words preceded by not like,good,love etc on the positive side and alone,afraid,lost in the negative side. But when negation words are used before them the meaning reverses which creates reverse sentiment.This might be the reason that positive sentiment was shown previously in nrc because bigrams were not considered.
+
+##More negation words analysed
+
+```{r}
+
+negation_words <- c("not", "no", "never", "without")
+
+negation_bigrams <- bigrams_separated %>%
+  filter(word1 %in% negation_words) %>%
+  inner_join(AFINN, by = c(word2 = "word")) %>%
+  count(word1, word2, score, sort = TRUE) %>%
+  mutate(contribution = n * score) %>%
+  arrange(desc(abs(contribution))) %>%
+  group_by(word1) %>%
+  slice(seq_len(20)) %>%
+  arrange(word1,desc(contribution)) %>%
+  ungroup()
+
+bigram_graph <- negation_bigrams %>%
+  graph_from_data_frame() 
+
+set.seed(123)
+
+a <- grid::arrow(type = "closed", length = unit(.15, "inches"))
+
+ggraph(bigram_graph, layout = "fr") +
+  geom_edge_link(alpha = .25) +
+  geom_edge_density(aes(fill = score)) +
+  geom_node_point(color = "purple1", size = 1) + 
+  geom_node_text(aes(label = name),  repel = TRUE) +
+  theme_void() + theme(legend.position = "none",
+                       plot.title = element_text(hjust = 0.5)) +
+  ggtitle("Negation Bigram Network")
+```
+
+Now words related to negation words will show how sentiments are being affected. This negation bigram shows how often this words are related to the words which change the sentiments.
+
+##Pairwise comparisons
+```{r warning=FALSE}
+pwc <- songdata_tidy %>%
+  filter(n() >= 20) %>%  
+  pairwise_count(word, song, sort = TRUE) %>%
+  filter(item1 %in% c("love", "afraid" )) %>%
+  group_by(item1) %>%
+  slice(seq_len(7)) %>%
+  ungroup() %>%
+  mutate(row = -row_number())
+```
+
+```{r}
+pwc %>%
+  ggplot(aes(row, n, fill = item1)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  facet_wrap(~item1, scales = "free") +
+  scale_x_continuous(  
+    breaks = pwc$row, 
+    labels = pwc$item2) +
+  theme_lyrics() + theme(panel.grid.major.x = element_blank()) +
+  xlab(NULL) + ylab(NULL) +
+  ggtitle("Pairwise Counts") +
+  coord_flip()
+```
+This shows pairwise count with the words associated most commonly to the selected words afraid, love.We can do this for other words too.
+
+#5.Conclusion
+
+In this songdata,we  first took a glance into the actual data, looking only at the basics. After performing some conditioning such as data cleansing and removing uninformative words, we began an exploratory analysis at the song level.We unnested words into tokenised words.TF-IDF analysis is done to represent the information behind a word in a document relating to some outcome of interest.After this sentiment  analysis is performed using different sentiment lexicons and how well they matched the lyrics.Next, we performed sentiment analysis on all songs in the dataset and the impact of bigrams.We made some assumptions for the negative sentiment outcome.
